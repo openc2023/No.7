@@ -1,0 +1,62 @@
+# 依赖目录
+vendor/
+node_modules/
+
+# 环境配置文件
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+*.log
+logs/
+error.log
+
+# 临时文件
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 备份文件
+*.bak
+*.backup
+admin/index.php.backup*
+
+# 编辑器配置
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 编译文件
+*.pyc
+*.pyo
+*.mo
+*.so
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 测试覆盖率报告
+coverage/
+.nyc_output/
+
+# 构建输出
+build/
+dist/
+
+# 数据库文件
+*.sqlite
+*.sqlite3
+
+# IDE 配置文件
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 其他
+.cache/
+.temp/

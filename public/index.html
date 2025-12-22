@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>No.7 Website</title>
+    <meta name="description" content="Built with Project No.7">
+    <style>
+        /* 基础样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f4f4f4;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        /* 导航栏样式 */
+        .navbar {
+            background-color: #333;
+            color: #fff;
+            padding: 1rem 0;
+        }
+        
+        .navbar-brand {
+            display: inline-block;
+        }
+        
+        .navbar-logo {
+            color: #fff;
+            text-decoration: none;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .navbar-menu {
+            list-style: none;
+            display: flex;
+            margin-top: 0;
+        }
+        
+        .navbar-item {
+            position: relative;
+            margin-left: 20px;
+        }
+        
+        .navbar-link {
+            color: #fff;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            display: block;
+        }
+        
+        .navbar-link:hover {
+            background-color: #555;
+        }
+        
+        /* 下拉菜单 */
+        .navbar-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background-color: #333;
+            list-style: none;
+            min-width: 150px;
+            display: none;
+            z-index: 1000;
+        }
+        
+        .navbar-item:hover .navbar-dropdown {
+            display: block;
+        }
+        
+        /* 页面内容 */
+        .page-content {
+            background-color: #fff;
+            padding: 2rem 0;
+            min-height: 500px;
+        }
+        
+        /* 页脚 */
+        .footer {
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 2rem;
+        }
+        
+        /* 组件样式 */
+        
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar"><div class="container"><div class="navbar-brand"><a href="index.html" class="navbar-logo">Logo</a></div><ul class="navbar-menu"><li class="navbar-item"><a href="index.html" class="navbar-link">首页</a></li><li class="navbar-item"><a href="works.html" class="navbar-link">作品</a></li></ul></div></nav>
+    
+    <!-- 页面内容 -->
+    <main class="page-content">
+        <div class="container">
+            <div class="content-basic"><h2>欢迎使用 No.7</h2><p>点击这里开始编辑内容...</p></div>
+        </div>
+    </main>
+    
+    <!-- 页脚 -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; " . date('Y') . " No.7 Website. Built with No.7 Studio.</p>
+        </div>
+    </footer>
+</body>
+</html>
