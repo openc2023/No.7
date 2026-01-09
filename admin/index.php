@@ -596,6 +596,68 @@
             opacity: 0; 
             cursor: pointer; 
         }
+
+        /* --- 自定义组件字段面板 --- */
+        .field-panel {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            width: 100%;
+        }
+
+        .field-title {
+            font-size: 12px;
+            color: #a1a1aa;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .field-list {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+        }
+
+        .field-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 160px;
+        }
+
+        .field-label {
+            font-size: 11px;
+            color: #a1a1aa;
+        }
+
+        .field-input,
+        .field-textarea {
+            background: #27272a;
+            border: 1px solid transparent;
+            color: #e4e4e7;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+
+        .field-input:focus,
+        .field-textarea:focus {
+            border-color: var(--accent-blue);
+            outline: none;
+        }
+
+        .field-textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .field-color {
+            padding: 0;
+            height: 32px;
+            width: 52px;
+        }
     </style>
 </head>
 <body>
@@ -794,6 +856,11 @@
                     </div>
                 </div>
 
+                <div id="comp-props-fields" class="field-panel hidden">
+                    <div class="field-title">组件字段</div>
+                    <div id="comp-fields-container" class="field-list"></div>
+                </div>
+
             </div>
         </div>
     </footer>
@@ -876,6 +943,157 @@
             document.getElementById('panel-component').classList.toggle('hidden', tab !== 'component');
         }
 
+        function normalizeColorValue(value) {
+            if (!value) return '#ffffff';
+            if (value.startsWith('#')) return value;
+            const match = value.match(/^rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)$/);
+            if (!match) return '#ffffff';
+            const toHex = (num) => ("0" + parseInt(num, 10).toString(16)).slice(-2);
+            return `#${toHex(match[1])}${toHex(match[2])}${toHex(match[3])}`;
+        }
+
+        function getComponentRootElement(model) {
+            if (!model) return null;
+            const el = model.getEl();
+            if (!el) return null;
+            return el.closest('[data-no7-fields]');
+        }
+
+        function getComponentRootModel(rootEl) {
+            if (!rootEl || !window.editor) return null;
+            const wrapper = window.editor.DomComponents.getWrapper();
+            if (!wrapper) return null;
+            const matches = wrapper.find('[data-no7-fields]');
+            return matches.find((component) => component.getEl() === rootEl) || null;
+        }
+
+        function getComponentFields(rootEl) {
+            if (!rootEl) return [];
+            const raw = rootEl.dataset.no7Fields;
+            if (!raw) return [];
+            try {
+                return JSON.parse(decodeURIComponent(raw));
+            } catch (error) {
+                console.warn('解析组件字段失败:', error);
+                return [];
+            }
+        }
+
+        function getFieldTarget(rootEl, rootModel, field) {
+            const selector = field.selector;
+            const targetEl = selector ? rootEl.querySelector(selector) : rootEl;
+            let targetModel = rootModel;
+            if (selector && rootModel) {
+                const candidates = rootModel.find(selector);
+                if (candidates.length > 0) {
+                    targetModel = candidates[0];
+                }
+            }
+            return { targetEl, targetModel };
+        }
+
+        function getFieldValue(field, rootEl) {
+            const selector = field.selector;
+            const target = selector ? rootEl.querySelector(selector) : rootEl;
+            if (!target) return '';
+
+            if (field.style) {
+                const computed = window.getComputedStyle(target);
+                return computed.getPropertyValue(field.style).trim();
+            }
+
+            const attribute = field.attribute || 'text';
+            if (attribute === 'text') return target.textContent.trim();
+            if (attribute === 'html') return target.innerHTML.trim();
+            return target.getAttribute(attribute) || '';
+        }
+
+        function applyFieldValue(field, rootEl, rootModel, value) {
+            const { targetEl, targetModel } = getFieldTarget(rootEl, rootModel, field);
+            if (!targetEl) return;
+
+            if (field.style) {
+                targetEl.style.setProperty(field.style, value);
+                if (targetModel) {
+                    targetModel.addStyle({ [field.style]: value });
+                }
+                return;
+            }
+
+            const attribute = field.attribute || 'text';
+            if (attribute === 'text') {
+                if (targetModel) {
+                    targetModel.components(value);
+                } else {
+                    targetEl.textContent = value;
+                }
+            } else if (attribute === 'html') {
+                if (targetModel) {
+                    targetModel.components(value);
+                } else {
+                    targetEl.innerHTML = value;
+                }
+            } else {
+                targetEl.setAttribute(attribute, value);
+                if (targetModel) {
+                    targetModel.addAttributes({ [attribute]: value });
+                }
+            }
+        }
+
+        function clearComponentFields() {
+            const container = document.getElementById('comp-fields-container');
+            if (container) {
+                container.innerHTML = '';
+            }
+        }
+
+        function renderComponentFields(fields, rootEl) {
+            const container = document.getElementById('comp-fields-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const rootModel = getComponentRootModel(rootEl);
+
+            fields.forEach((field) => {
+                const item = document.createElement('div');
+                item.className = 'field-item';
+
+                const label = document.createElement('label');
+                label.className = 'field-label';
+                label.textContent = field.label || field.key || '字段';
+
+                let input;
+                if (field.type === 'textarea') {
+                    input = document.createElement('textarea');
+                    input.className = 'field-textarea';
+                } else {
+                    input = document.createElement('input');
+                    input.className = 'field-input';
+                    input.type = field.type === 'color' ? 'color' : 'text';
+                    if (field.type === 'color') {
+                        input.classList.add('field-color');
+                    }
+                }
+
+                let value = getFieldValue(field, rootEl);
+                if (field.type === 'color') {
+                    value = normalizeColorValue(value);
+                }
+                if (value) {
+                    input.value = value;
+                }
+
+                input.addEventListener('input', (event) => {
+                    applyFieldValue(field, rootEl, rootModel, event.target.value);
+                });
+
+                item.appendChild(label);
+                item.appendChild(input);
+                container.appendChild(item);
+            });
+        }
+
         // 3. 核心：监听组件选中，更新底部栏状态
         function initSelectionListener(editor) {
             editor.on('component:selected', (model) => {
@@ -889,6 +1107,15 @@
                 document.getElementById('comp-props-glass').classList.add('hidden');
                 document.getElementById('comp-props-text').classList.add('hidden');
                 document.getElementById('comp-props-image').classList.add('hidden');
+                document.getElementById('comp-props-fields').classList.add('hidden');
+
+                const componentRoot = getComponentRootElement(selected);
+                const fields = getComponentFields(componentRoot);
+                if (fields.length > 0) {
+                    document.getElementById('comp-props-fields').classList.remove('hidden');
+                    renderComponentFields(fields, componentRoot);
+                    return;
+                }
 
                 // C. 智能识别并显示对应面板
                 if (selected.is('text') || selected.attributes.type === 'text' || selected.getEl().innerText.trim().length > 0) {
@@ -917,6 +1144,8 @@
                 document.getElementById('comp-props-glass').classList.add('hidden');
                 document.getElementById('comp-props-text').classList.add('hidden');
                 document.getElementById('comp-props-image').classList.add('hidden');
+                document.getElementById('comp-props-fields').classList.add('hidden');
+                clearComponentFields();
             });
         }
 
@@ -1042,11 +1271,19 @@
                         data.components.forEach((comp, index) => {
                             // 为每个组件生成唯一ID
                             const compId = comp.name.toLowerCase().replace(/\s+/g, '-') + '-' + index;
+                            const fields = Array.isArray(comp.fields) ? comp.fields : [];
+                            const encodedFields = encodeURIComponent(JSON.stringify(fields));
+                            const componentMarkup = `
+                                <div class="no7-component" data-no7-component="${comp.id}" data-no7-name="${comp.name}" data-no7-fields="${encodedFields}">
+                                    ${comp.template}
+                                </div>
+                                <style>${comp.style || ''}</style>
+                            `;
                             bm.add(compId, {
                                 label: comp.name,
                                 category: comp.category || '未分类',
                                 attributes: { class: `fa-solid ${comp.icon}` },
-                                content: comp.template + `<style>${comp.style || ''}</style>`
+                                content: componentMarkup
                             });
                         });
                         
