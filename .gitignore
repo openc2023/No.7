@@ -60,3 +60,4 @@ dist/
 # 其他
 .cache/
 .temp/
+.trae/
