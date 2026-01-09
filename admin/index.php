@@ -959,6 +959,13 @@
             return el.closest('[data-no7-fields]');
         }
 
+        function isInsideFreeform(model) {
+            if (!model) return false;
+            const el = model.getEl();
+            if (!el) return false;
+            return Boolean(el.closest('.freeform-frame'));
+        }
+
         function getComponentRootModel(rootEl) {
             if (!rootEl || !window.editor) return null;
             const wrapper = window.editor.DomComponents.getWrapper();
@@ -1117,6 +1124,12 @@
                     return;
                 }
 
+                if (isInsideFreeform(selected)) {
+                    editor.setDragMode('absolute');
+                } else {
+                    editor.setDragMode('translate');
+                }
+
                 // C. 智能识别并显示对应面板
                 if (selected.is('text') || selected.attributes.type === 'text' || selected.getEl().innerText.trim().length > 0) {
                     // --> 是文本 (或包含文本的容器)
@@ -1146,6 +1159,7 @@
                 document.getElementById('comp-props-image').classList.add('hidden');
                 document.getElementById('comp-props-fields').classList.add('hidden');
                 clearComponentFields();
+                editor.setDragMode('translate');
             });
         }
 
@@ -1267,7 +1281,42 @@
                             `
                         });
 
-                        // 2. 循环添加 API 返回的组件
+                        // 2. 添加自由画布容器（局部绝对定位）
+                        bm.add('freeform-frame', {
+                            label: '自由画布 (Freeform)',
+                            category: '布局组件',
+                            attributes: { class: 'fa-solid fa-expand' },
+                            content: `
+                                <div class="freeform-frame" data-gjs-droppable="true">
+                                    <style>
+                                        .freeform-frame {
+                                            position: relative;
+                                            min-height: 320px;
+                                            border: 2px dashed rgba(255,255,255,0.3);
+                                            border-radius: 12px;
+                                            background: rgba(255,255,255,0.03);
+                                            overflow: hidden;
+                                        }
+                                        .freeform-frame::before {
+                                            content: '自由画布：拖入组件后可自由定位';
+                                            position: absolute;
+                                            inset: 0;
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                            color: rgba(255,255,255,0.45);
+                                            font-size: 12px;
+                                            pointer-events: none;
+                                        }
+                                        .freeform-frame > * {
+                                            position: absolute;
+                                        }
+                                    </style>
+                                </div>
+                            `
+                        });
+
+                        // 3. 循环添加 API 返回的组件
                         data.components.forEach((comp, index) => {
                             // 为每个组件生成唯一ID
                             const compId = comp.name.toLowerCase().replace(/\s+/g, '-') + '-' + index;
@@ -1287,7 +1336,7 @@
                             });
                         });
                         
-                        // 3. 重新渲染侧边栏 (使用我们自定义的渲染函数)
+                        // 4. 重新渲染侧边栏 (使用我们自定义的渲染函数)
                         renderCustomBlocks();
                     }
                 })
@@ -1374,8 +1423,8 @@
                     // 自定义 Block 的渲染外观，让它长得像你的卡片
                     custom: true
                 },
-                // 启用绝对定位拖拽 (可选，但配合 CSS Grid 建议设为 false，使用流式布局)
-                dragMode: 'absolute',
+                // 默认流式拖拽，绝对定位仅在自由画布容器内启用
+                dragMode: 'translate',
                 
                 panels: { defaults: [] }, // 清空默认面板
                 
