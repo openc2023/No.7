@@ -984,6 +984,30 @@
             }
         }
 
+        function parseRawJson(value, label) {
+            if (!value) return null;
+            try {
+                return JSON.parse(value);
+            } catch (error) {
+                console.warn(`解析${label}失败:`, error);
+                return null;
+            }
+        }
+
+        function getComponentProps(rootEl) {
+            if (!rootEl) return {};
+            const raw = rootEl.getAttribute('data-n7-props')
+                || rootEl.getAttribute('data-no7-props')
+                || rootEl.dataset.n7Props;
+            const props = parseRawJson(raw, '组件属性');
+            return props || {};
+        }
+
+        function setComponentProps(rootEl, props) {
+            if (!rootEl) return;
+            rootEl.setAttribute('data-n7-props', JSON.stringify(props));
+        }
+
         function getComponentSchema(rootEl) {
             if (!rootEl) return { fields: [], bindings: {} };
             const fields = parseEncodedJson(rootEl.dataset.no7Fields, '组件字段') || [];
@@ -1004,16 +1028,25 @@
             return { targetEl, targetModel };
         }
 
-        function getFieldValue(field, binding, rootEl) {
+        function getFieldValue(field, binding, rootEl, props) {
+            const nameKey = field.name || field.key;
+            if (props && nameKey && props[nameKey] !== undefined) {
+                return props[nameKey];
+            }
+
             const selector = field.selector || binding?.selector;
             const target = selector ? rootEl.querySelector(selector) : rootEl;
             if (!target) return '';
 
+            const mode = binding?.mode || field.mode;
             const styleKey = field.style || binding?.style;
             if (styleKey) {
                 const computed = window.getComputedStyle(target);
                 return computed.getPropertyValue(styleKey).trim();
             }
+
+            if (mode === 'text') return target.textContent.trim();
+            if (mode === 'html') return target.innerHTML.trim();
 
             const attribute = field.attribute || binding?.attr || 'text';
             if (attribute === 'text') return target.textContent.trim();
@@ -1025,11 +1058,29 @@
             const { targetEl, targetModel } = getFieldTarget(rootEl, rootModel, field, binding);
             if (!targetEl) return;
 
+            const mode = binding?.mode || field.mode;
             const styleKey = field.style || binding?.style;
             if (styleKey) {
                 targetEl.style.setProperty(styleKey, value);
                 if (targetModel) {
                     targetModel.addStyle({ [styleKey]: value });
+                }
+                return;
+            }
+
+            if (mode === 'text') {
+                if (targetModel) {
+                    targetModel.components(value);
+                } else {
+                    targetEl.textContent = value;
+                }
+                return;
+            }
+            if (mode === 'html') {
+                if (targetModel) {
+                    targetModel.components(value);
+                } else {
+                    targetEl.innerHTML = value;
                 }
                 return;
             }
@@ -1068,6 +1119,7 @@
             container.innerHTML = '';
 
             const rootModel = getComponentRootModel(rootEl);
+            const props = getComponentProps(rootEl);
             const fields = schema.fields || [];
             const bindings = schema.bindings || {};
 
@@ -1092,17 +1144,30 @@
                     }
                 }
 
-                const binding = bindings[field.name] || bindings[field.key];
-                let value = getFieldValue(field, binding, rootEl);
+                const fieldName = field.name || field.key;
+                const binding = bindings[fieldName] || bindings[field.key];
+                let value = getFieldValue(field, binding, rootEl, props);
                 if (field.type === 'color') {
                     value = normalizeColorValue(value);
                 }
                 if (value) {
                     input.value = value;
+                } else if (field.default !== undefined) {
+                    input.value = field.default;
+                    if (fieldName) {
+                        props[fieldName] = field.default;
+                        setComponentProps(rootEl, props);
+                        applyFieldValue(field, binding, rootEl, rootModel, field.default);
+                    }
                 }
 
                 input.addEventListener('input', (event) => {
-                    applyFieldValue(field, binding, rootEl, rootModel, event.target.value);
+                    const nextValue = event.target.value;
+                    if (fieldName) {
+                        props[fieldName] = nextValue;
+                        setComponentProps(rootEl, props);
+                    }
+                    applyFieldValue(field, binding, rootEl, rootModel, nextValue);
                 });
 
                 item.appendChild(label);
