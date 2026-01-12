@@ -78,6 +78,17 @@ foreach ($iterator as $entry) {
     $templateFile = $manifest['template'] ?? 'template.html';
     $styleFile = $manifest['style'] ?? 'style.css';
     $fields = $manifest['fields'] ?? [];
+    $schemaRaw = safe_read($componentsDir, $folder . '/schema.json');
+    $schema = null;
+    if ($schemaRaw) {
+        $decoded = json_decode($schemaRaw, true);
+        if (is_array($decoded)) {
+            $schema = $decoded;
+        }
+    }
+    if (!$fields && $schema && isset($schema['fields']) && is_array($schema['fields'])) {
+        $fields = $schema['fields'];
+    }
 
     $template = safe_read($componentsDir, $folder . '/' . $templateFile);
     if (!$template || trim($template) === '') {
@@ -95,6 +106,7 @@ foreach ($iterator as $entry) {
         'category' => $category,
         'icon' => $icon,
         'fields' => $fields,
+        'schema' => $schema,
         'template' => $template,
         'style' => $style
     ];

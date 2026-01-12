@@ -974,20 +974,25 @@
             return matches.find((component) => component.getEl() === rootEl) || null;
         }
 
-        function getComponentFields(rootEl) {
-            if (!rootEl) return [];
-            const raw = rootEl.dataset.no7Fields;
-            if (!raw) return [];
+        function parseEncodedJson(value, label) {
+            if (!value) return null;
             try {
-                return JSON.parse(decodeURIComponent(raw));
+                return JSON.parse(decodeURIComponent(value));
             } catch (error) {
-                console.warn('解析组件字段失败:', error);
-                return [];
+                console.warn(`解析${label}失败:`, error);
+                return null;
             }
         }
 
-        function getFieldTarget(rootEl, rootModel, field) {
-            const selector = field.selector;
+        function getComponentSchema(rootEl) {
+            if (!rootEl) return { fields: [], bindings: {} };
+            const fields = parseEncodedJson(rootEl.dataset.no7Fields, '组件字段') || [];
+            const bindings = parseEncodedJson(rootEl.dataset.no7Bindings, '组件绑定') || {};
+            return { fields, bindings };
+        }
+
+        function getFieldTarget(rootEl, rootModel, field, binding) {
+            const selector = field.selector || binding?.selector;
             const targetEl = selector ? rootEl.querySelector(selector) : rootEl;
             let targetModel = rootModel;
             if (selector && rootModel) {
@@ -999,35 +1004,37 @@
             return { targetEl, targetModel };
         }
 
-        function getFieldValue(field, rootEl) {
-            const selector = field.selector;
+        function getFieldValue(field, binding, rootEl) {
+            const selector = field.selector || binding?.selector;
             const target = selector ? rootEl.querySelector(selector) : rootEl;
             if (!target) return '';
 
-            if (field.style) {
+            const styleKey = field.style || binding?.style;
+            if (styleKey) {
                 const computed = window.getComputedStyle(target);
-                return computed.getPropertyValue(field.style).trim();
+                return computed.getPropertyValue(styleKey).trim();
             }
 
-            const attribute = field.attribute || 'text';
+            const attribute = field.attribute || binding?.attr || 'text';
             if (attribute === 'text') return target.textContent.trim();
             if (attribute === 'html') return target.innerHTML.trim();
             return target.getAttribute(attribute) || '';
         }
 
-        function applyFieldValue(field, rootEl, rootModel, value) {
-            const { targetEl, targetModel } = getFieldTarget(rootEl, rootModel, field);
+        function applyFieldValue(field, binding, rootEl, rootModel, value) {
+            const { targetEl, targetModel } = getFieldTarget(rootEl, rootModel, field, binding);
             if (!targetEl) return;
 
-            if (field.style) {
-                targetEl.style.setProperty(field.style, value);
+            const styleKey = field.style || binding?.style;
+            if (styleKey) {
+                targetEl.style.setProperty(styleKey, value);
                 if (targetModel) {
-                    targetModel.addStyle({ [field.style]: value });
+                    targetModel.addStyle({ [styleKey]: value });
                 }
                 return;
             }
 
-            const attribute = field.attribute || 'text';
+            const attribute = field.attribute || binding?.attr || 'text';
             if (attribute === 'text') {
                 if (targetModel) {
                     targetModel.components(value);
@@ -1055,12 +1062,14 @@
             }
         }
 
-        function renderComponentFields(fields, rootEl) {
+        function renderComponentFields(schema, rootEl) {
             const container = document.getElementById('comp-fields-container');
             if (!container) return;
             container.innerHTML = '';
 
             const rootModel = getComponentRootModel(rootEl);
+            const fields = schema.fields || [];
+            const bindings = schema.bindings || {};
 
             fields.forEach((field) => {
                 const item = document.createElement('div');
@@ -1083,7 +1092,8 @@
                     }
                 }
 
-                let value = getFieldValue(field, rootEl);
+                const binding = bindings[field.name] || bindings[field.key];
+                let value = getFieldValue(field, binding, rootEl);
                 if (field.type === 'color') {
                     value = normalizeColorValue(value);
                 }
@@ -1092,7 +1102,7 @@
                 }
 
                 input.addEventListener('input', (event) => {
-                    applyFieldValue(field, rootEl, rootModel, event.target.value);
+                    applyFieldValue(field, binding, rootEl, rootModel, event.target.value);
                 });
 
                 item.appendChild(label);
@@ -1117,10 +1127,10 @@
                 document.getElementById('comp-props-fields').classList.add('hidden');
 
                 const componentRoot = getComponentRootElement(selected);
-                const fields = getComponentFields(componentRoot);
-                if (fields.length > 0) {
+                const schema = getComponentSchema(componentRoot);
+                if (schema.fields.length > 0) {
                     document.getElementById('comp-props-fields').classList.remove('hidden');
-                    renderComponentFields(fields, componentRoot);
+                    renderComponentFields(schema, componentRoot);
                     return;
                 }
 
@@ -1320,10 +1330,14 @@
                         data.components.forEach((comp, index) => {
                             // 为每个组件生成唯一ID
                             const compId = comp.name.toLowerCase().replace(/\s+/g, '-') + '-' + index;
-                            const fields = Array.isArray(comp.fields) ? comp.fields : [];
+                            const schema = comp.schema && typeof comp.schema === 'object' ? comp.schema : null;
+                            const fields = Array.isArray(comp.fields) ? comp.fields : (schema?.fields || []);
                             const encodedFields = encodeURIComponent(JSON.stringify(fields));
+                            const encodedBindings = schema?.bindings
+                                ? encodeURIComponent(JSON.stringify(schema.bindings))
+                                : '';
                             const componentMarkup = `
-                                <div class="no7-component" data-no7-component="${comp.id}" data-no7-name="${comp.name}" data-no7-fields="${encodedFields}">
+                                <div class="no7-component" data-no7-component="${comp.id}" data-no7-name="${comp.name}" data-no7-fields="${encodedFields}" data-no7-bindings="${encodedBindings}">
                                     ${comp.template}
                                 </div>
                                 <style>${comp.style || ''}</style>
