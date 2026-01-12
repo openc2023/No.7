@@ -1856,6 +1856,57 @@
                 return true;
             });
         }
+
+        // 保存菜单结构
+        async function saveMenu() {
+            try {
+                const res = await fetch('../api/save-menu.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ menu: menuData })
+                });
+                const data = await res.json();
+                if (data.status !== 'success') {
+                    console.error('菜单保存失败:', data.message);
+                    alert('菜单保存失败: ' + (data.message || '未知错误'));
+                }
+            } catch (error) {
+                console.error('菜单保存失败:', error);
+                alert('菜单保存失败，请检查网络连接。');
+            }
+        }
+
+        // 保存当前页面内容
+        async function saveProject() {
+            const editor = window.editor;
+            if (!editor) return;
+
+            const html = editor.getHtml();
+            const css = editor.getCss();
+
+            try {
+                const res = await fetch('../api/save-page.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filename: currentPageFile,
+                        html,
+                        css
+                    })
+                });
+                const data = await res.json();
+                if (data.status !== 'success') {
+                    console.error('保存失败:', data.message);
+                    alert('保存失败: ' + (data.message || '未知错误'));
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.error('保存失败:', error);
+                alert('保存失败，请检查网络连接。');
+                return false;
+            }
+        }
         
         // 从API加载菜单数据
         function loadMenu() {
