@@ -596,6 +596,68 @@
             opacity: 0; 
             cursor: pointer; 
         }
+
+        /* --- 自定义组件字段面板 --- */
+        .field-panel {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            width: 100%;
+        }
+
+        .field-title {
+            font-size: 12px;
+            color: #a1a1aa;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .field-list {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+        }
+
+        .field-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 160px;
+        }
+
+        .field-label {
+            font-size: 11px;
+            color: #a1a1aa;
+        }
+
+        .field-input,
+        .field-textarea {
+            background: #27272a;
+            border: 1px solid transparent;
+            color: #e4e4e7;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+
+        .field-input:focus,
+        .field-textarea:focus {
+            border-color: var(--accent-blue);
+            outline: none;
+        }
+
+        .field-textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .field-color {
+            padding: 0;
+            height: 32px;
+            width: 52px;
+        }
     </style>
 </head>
 <body>
@@ -794,6 +856,11 @@
                     </div>
                 </div>
 
+                <div id="comp-props-fields" class="field-panel hidden">
+                    <div class="field-title">组件字段</div>
+                    <div id="comp-fields-container" class="field-list"></div>
+                </div>
+
             </div>
         </div>
     </footer>
@@ -876,6 +943,239 @@
             document.getElementById('panel-component').classList.toggle('hidden', tab !== 'component');
         }
 
+        function normalizeColorValue(value) {
+            if (!value) return '#ffffff';
+            if (value.startsWith('#')) return value;
+            const match = value.match(/^rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)$/);
+            if (!match) return '#ffffff';
+            const toHex = (num) => ("0" + parseInt(num, 10).toString(16)).slice(-2);
+            return `#${toHex(match[1])}${toHex(match[2])}${toHex(match[3])}`;
+        }
+
+        function getComponentRootElement(model) {
+            if (!model) return null;
+            const el = model.getEl();
+            if (!el) return null;
+            return el.closest('[data-no7-fields]');
+        }
+
+        function isInsideFreeform(model) {
+            if (!model) return false;
+            const el = model.getEl();
+            if (!el) return false;
+            return Boolean(el.closest('.freeform-frame'));
+        }
+
+        function getComponentRootModel(rootEl) {
+            if (!rootEl || !window.editor) return null;
+            const wrapper = window.editor.DomComponents.getWrapper();
+            if (!wrapper) return null;
+            const matches = wrapper.find('[data-no7-fields]');
+            return matches.find((component) => component.getEl() === rootEl) || null;
+        }
+
+        function parseEncodedJson(value, label) {
+            if (!value) return null;
+            try {
+                return JSON.parse(decodeURIComponent(value));
+            } catch (error) {
+                console.warn(`解析${label}失败:`, error);
+                return null;
+            }
+        }
+
+        function parseRawJson(value, label) {
+            if (!value) return null;
+            try {
+                return JSON.parse(value);
+            } catch (error) {
+                console.warn(`解析${label}失败:`, error);
+                return null;
+            }
+        }
+
+        function getComponentProps(rootEl) {
+            if (!rootEl) return {};
+            const raw = rootEl.getAttribute('data-n7-props')
+                || rootEl.getAttribute('data-no7-props')
+                || rootEl.dataset.n7Props;
+            const props = parseRawJson(raw, '组件属性');
+            return props || {};
+        }
+
+        function setComponentProps(rootEl, props) {
+            if (!rootEl) return;
+            rootEl.setAttribute('data-n7-props', JSON.stringify(props));
+        }
+
+        function getComponentSchema(rootEl) {
+            if (!rootEl) return { fields: [], bindings: {} };
+            const fields = parseEncodedJson(rootEl.dataset.no7Fields, '组件字段') || [];
+            const bindings = parseEncodedJson(rootEl.dataset.no7Bindings, '组件绑定') || {};
+            return { fields, bindings };
+        }
+
+        function getFieldTarget(rootEl, rootModel, field, binding) {
+            const selector = field.selector || binding?.selector;
+            const targetEl = selector ? rootEl.querySelector(selector) : rootEl;
+            let targetModel = rootModel;
+            if (selector && rootModel) {
+                const candidates = rootModel.find(selector);
+                if (candidates.length > 0) {
+                    targetModel = candidates[0];
+                }
+            }
+            return { targetEl, targetModel };
+        }
+
+        function getFieldValue(field, binding, rootEl, props) {
+            const nameKey = field.name || field.key;
+            if (props && nameKey && props[nameKey] !== undefined) {
+                return props[nameKey];
+            }
+
+            const selector = field.selector || binding?.selector;
+            const target = selector ? rootEl.querySelector(selector) : rootEl;
+            if (!target) return '';
+
+            const mode = binding?.mode || field.mode;
+            const styleKey = field.style || binding?.style;
+            if (styleKey) {
+                const computed = window.getComputedStyle(target);
+                return computed.getPropertyValue(styleKey).trim();
+            }
+
+            if (mode === 'text') return target.textContent.trim();
+            if (mode === 'html') return target.innerHTML.trim();
+
+            const attribute = field.attribute || binding?.attr || 'text';
+            if (attribute === 'text') return target.textContent.trim();
+            if (attribute === 'html') return target.innerHTML.trim();
+            return target.getAttribute(attribute) || '';
+        }
+
+        function applyFieldValue(field, binding, rootEl, rootModel, value) {
+            const { targetEl, targetModel } = getFieldTarget(rootEl, rootModel, field, binding);
+            if (!targetEl) return;
+
+            const mode = binding?.mode || field.mode;
+            const styleKey = field.style || binding?.style;
+            if (styleKey) {
+                targetEl.style.setProperty(styleKey, value);
+                if (targetModel) {
+                    targetModel.addStyle({ [styleKey]: value });
+                }
+                return;
+            }
+
+            if (mode === 'text') {
+                if (targetModel) {
+                    targetModel.components(value);
+                } else {
+                    targetEl.textContent = value;
+                }
+                return;
+            }
+            if (mode === 'html') {
+                if (targetModel) {
+                    targetModel.components(value);
+                } else {
+                    targetEl.innerHTML = value;
+                }
+                return;
+            }
+
+            const attribute = field.attribute || binding?.attr || 'text';
+            if (attribute === 'text') {
+                if (targetModel) {
+                    targetModel.components(value);
+                } else {
+                    targetEl.textContent = value;
+                }
+            } else if (attribute === 'html') {
+                if (targetModel) {
+                    targetModel.components(value);
+                } else {
+                    targetEl.innerHTML = value;
+                }
+            } else {
+                targetEl.setAttribute(attribute, value);
+                if (targetModel) {
+                    targetModel.addAttributes({ [attribute]: value });
+                }
+            }
+        }
+
+        function clearComponentFields() {
+            const container = document.getElementById('comp-fields-container');
+            if (container) {
+                container.innerHTML = '';
+            }
+        }
+
+        function renderComponentFields(schema, rootEl) {
+            const container = document.getElementById('comp-fields-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const rootModel = getComponentRootModel(rootEl);
+            const props = getComponentProps(rootEl);
+            const fields = schema.fields || [];
+            const bindings = schema.bindings || {};
+
+            fields.forEach((field) => {
+                const item = document.createElement('div');
+                item.className = 'field-item';
+
+                const label = document.createElement('label');
+                label.className = 'field-label';
+                label.textContent = field.label || field.key || '字段';
+
+                let input;
+                if (field.type === 'textarea') {
+                    input = document.createElement('textarea');
+                    input.className = 'field-textarea';
+                } else {
+                    input = document.createElement('input');
+                    input.className = 'field-input';
+                    input.type = field.type === 'color' ? 'color' : 'text';
+                    if (field.type === 'color') {
+                        input.classList.add('field-color');
+                    }
+                }
+
+                const fieldName = field.name || field.key;
+                const binding = bindings[fieldName] || bindings[field.key];
+                let value = getFieldValue(field, binding, rootEl, props);
+                if (field.type === 'color') {
+                    value = normalizeColorValue(value);
+                }
+                if (value) {
+                    input.value = value;
+                } else if (field.default !== undefined) {
+                    input.value = field.default;
+                    if (fieldName) {
+                        props[fieldName] = field.default;
+                        setComponentProps(rootEl, props);
+                        applyFieldValue(field, binding, rootEl, rootModel, field.default);
+                    }
+                }
+
+                input.addEventListener('input', (event) => {
+                    const nextValue = event.target.value;
+                    if (fieldName) {
+                        props[fieldName] = nextValue;
+                        setComponentProps(rootEl, props);
+                    }
+                    applyFieldValue(field, binding, rootEl, rootModel, nextValue);
+                });
+
+                item.appendChild(label);
+                item.appendChild(input);
+                container.appendChild(item);
+            });
+        }
+
         // 3. 核心：监听组件选中，更新底部栏状态
         function initSelectionListener(editor) {
             editor.on('component:selected', (model) => {
@@ -889,6 +1189,21 @@
                 document.getElementById('comp-props-glass').classList.add('hidden');
                 document.getElementById('comp-props-text').classList.add('hidden');
                 document.getElementById('comp-props-image').classList.add('hidden');
+                document.getElementById('comp-props-fields').classList.add('hidden');
+
+                const componentRoot = getComponentRootElement(selected);
+                const schema = getComponentSchema(componentRoot);
+                if (schema.fields.length > 0) {
+                    document.getElementById('comp-props-fields').classList.remove('hidden');
+                    renderComponentFields(schema, componentRoot);
+                    return;
+                }
+
+                if (isInsideFreeform(selected)) {
+                    editor.setDragMode('absolute');
+                } else {
+                    editor.setDragMode('translate');
+                }
 
                 // C. 智能识别并显示对应面板
                 if (selected.is('text') || selected.attributes.type === 'text' || selected.getEl().innerText.trim().length > 0) {
@@ -917,6 +1232,9 @@
                 document.getElementById('comp-props-glass').classList.add('hidden');
                 document.getElementById('comp-props-text').classList.add('hidden');
                 document.getElementById('comp-props-image').classList.add('hidden');
+                document.getElementById('comp-props-fields').classList.add('hidden');
+                clearComponentFields();
+                editor.setDragMode('translate');
             });
         }
 
@@ -1038,19 +1356,66 @@
                             `
                         });
 
-                        // 2. 循环添加 API 返回的组件
+                        // 2. 添加自由画布容器（局部绝对定位）
+                        bm.add('freeform-frame', {
+                            label: '自由画布 (Freeform)',
+                            category: '布局组件',
+                            attributes: { class: 'fa-solid fa-expand' },
+                            content: `
+                                <div class="freeform-frame" data-gjs-droppable="true">
+                                    <style>
+                                        .freeform-frame {
+                                            position: relative;
+                                            min-height: 320px;
+                                            border: 2px dashed rgba(255,255,255,0.3);
+                                            border-radius: 12px;
+                                            background: rgba(255,255,255,0.03);
+                                            overflow: hidden;
+                                        }
+                                        .freeform-frame::before {
+                                            content: '自由画布：拖入组件后可自由定位';
+                                            position: absolute;
+                                            inset: 0;
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                            color: rgba(255,255,255,0.45);
+                                            font-size: 12px;
+                                            pointer-events: none;
+                                        }
+                                        .freeform-frame > * {
+                                            position: absolute;
+                                        }
+                                    </style>
+                                </div>
+                            `
+                        });
+
+                        // 3. 循环添加 API 返回的组件
                         data.components.forEach((comp, index) => {
                             // 为每个组件生成唯一ID
                             const compId = comp.name.toLowerCase().replace(/\s+/g, '-') + '-' + index;
+                            const schema = comp.schema && typeof comp.schema === 'object' ? comp.schema : null;
+                            const fields = Array.isArray(comp.fields) ? comp.fields : (schema?.fields || []);
+                            const encodedFields = encodeURIComponent(JSON.stringify(fields));
+                            const encodedBindings = schema?.bindings
+                                ? encodeURIComponent(JSON.stringify(schema.bindings))
+                                : '';
+                            const componentMarkup = `
+                                <div class="no7-component" data-no7-component="${comp.id}" data-no7-name="${comp.name}" data-no7-fields="${encodedFields}" data-no7-bindings="${encodedBindings}">
+                                    ${comp.template}
+                                </div>
+                                <style>${comp.style || ''}</style>
+                            `;
                             bm.add(compId, {
                                 label: comp.name,
                                 category: comp.category || '未分类',
                                 attributes: { class: `fa-solid ${comp.icon}` },
-                                content: comp.template + `<style>${comp.style || ''}</style>`
+                                content: componentMarkup
                             });
                         });
                         
-                        // 3. 重新渲染侧边栏 (使用我们自定义的渲染函数)
+                        // 4. 重新渲染侧边栏 (使用我们自定义的渲染函数)
                         renderCustomBlocks();
                     }
                 })
@@ -1137,8 +1502,8 @@
                     // 自定义 Block 的渲染外观，让它长得像你的卡片
                     custom: true
                 },
-                // 启用绝对定位拖拽 (可选，但配合 CSS Grid 建议设为 false，使用流式布局)
-                dragMode: 'absolute',
+                // 默认流式拖拽，绝对定位仅在自由画布容器内启用
+                dragMode: 'translate',
                 
                 panels: { defaults: [] }, // 清空默认面板
                 
@@ -1569,6 +1934,57 @@
                 }
                 return true;
             });
+        }
+
+        // 保存菜单结构
+        async function saveMenu() {
+            try {
+                const res = await fetch('../api/save-menu.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ menu: menuData })
+                });
+                const data = await res.json();
+                if (data.status !== 'success') {
+                    console.error('菜单保存失败:', data.message);
+                    alert('菜单保存失败: ' + (data.message || '未知错误'));
+                }
+            } catch (error) {
+                console.error('菜单保存失败:', error);
+                alert('菜单保存失败，请检查网络连接。');
+            }
+        }
+
+        // 保存当前页面内容
+        async function saveProject() {
+            const editor = window.editor;
+            if (!editor) return;
+
+            const html = editor.getHtml();
+            const css = editor.getCss();
+
+            try {
+                const res = await fetch('../api/save-page.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filename: currentPageFile,
+                        html,
+                        css
+                    })
+                });
+                const data = await res.json();
+                if (data.status !== 'success') {
+                    console.error('保存失败:', data.message);
+                    alert('保存失败: ' + (data.message || '未知错误'));
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.error('保存失败:', error);
+                alert('保存失败，请检查网络连接。');
+                return false;
+            }
         }
         
         // 从API加载菜单数据

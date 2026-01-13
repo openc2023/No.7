@@ -51,6 +51,7 @@ class Studio {
                         'name'     => $config['name'] ?? $folderName,
                         'category' => $config['category'] ?? '其他',
                         'icon'     => $config['icon'] ?? 'fa-cube',
+                        'fields'   => $config['fields'] ?? [],
                         'template' => $html,
                         'style'    => $css
                     ];
